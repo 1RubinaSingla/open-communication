@@ -10,10 +10,13 @@
   --border-strong: rgba(255, 255, 255, 0.42);
   --fg: #f2f5f9;
   --muted: #767b85;
-  --accent: #8affd6;
-  --accent-2: #57e0ff;
+  /* Amber sampled from the logo's rim light (hue ~28-33). */
+  --accent: #ff8f3c;
+  --accent-2: #ffb45e;
   --good: #5ef2a0;
-  --warn: #ffd166;
+  /* Pushed yellower than the old #ffd166 so caution stays distinct from the
+     orange accent rather than reading as another shade of it. */
+  --warn: #ffe066;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
 }
@@ -35,7 +38,7 @@ body {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    radial-gradient(80rem 60rem at 70% -10%, rgba(138, 255, 214, 0.05), transparent 60%);
+    radial-gradient(80rem 60rem at 70% -10%, rgba(255, 143, 60, 0.06), transparent 60%);
   background-size: 48px 48px, 48px 48px, 100% 100%;
   background-attachment: fixed;
 }
@@ -321,7 +324,7 @@ body {
   left: 0;
   right: 0;
   height: 40%;
-  background: linear-gradient(180deg, transparent, rgba(138, 255, 214, 0.045), transparent);
+  background: linear-gradient(180deg, transparent, rgba(255, 143, 60, 0.05), transparent);
   animation: scan 7s linear infinite;
   pointer-events: none;
   z-index: 1;

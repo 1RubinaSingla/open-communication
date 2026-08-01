@@ -93,8 +93,12 @@ export function AsciiBackground({ className = "" }: { className?: string }) {
           // Brighter glyphs at field peaks, dim mint in the troughs; glyphs
           // under the cursor lift further so the ripple reads clearly.
           const a = Math.min(0.95, 0.1 + n * n * 0.7 + near * 0.35);
-          const g = 200 + Math.floor(n * 55);
-          ctx.fillStyle = `rgba(${Math.floor(120 + n * 60)},${g},${Math.floor(200 + n * 40)},${a})`;
+          // Amber ramp matching the logo: deep copper in the troughs rising to
+          // pale gold at the peaks.
+          const r = 200 + Math.floor(n * 55);
+          const g = 120 + Math.floor(n * 80);
+          const b = 60 + Math.floor(n * 45);
+          ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
           ctx.fillText(ch, x * CELL, y * CELL);
         }
       }
