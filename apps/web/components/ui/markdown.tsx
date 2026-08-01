@@ -112,17 +112,17 @@ export function Markdown({ content }: { content: string }) {
       if (h) {
         flushPara(key);
         flushList(key);
-        const depth = h[1]?.length ?? 1;
+        const depth = (h[1] ?? "#").length;
         const size = depth === 1 ? "text-lg" : depth === 2 ? "text-base" : "text-sm";
         blocks.push(<div key={key} className={`mono ${size} mt-2 font-semibold text-fg`}>{inline(h[2] ?? "", key)}</div>);
       } else if (bullet) {
         flushPara(key);
         if (!list || list.ordered) { flushList(key); list = { ordered: false, items: [] }; }
-        list!.items.push(bullet[1] ?? "");
+        list.items.push(bullet[1] ?? "");
       } else if (ordered) {
         flushPara(key);
         if (!list || !list.ordered) { flushList(key); list = { ordered: true, items: [] }; }
-        list!.items.push(ordered[1] ?? "");
+        list.items.push(ordered[1] ?? "");
       } else if (raw.trim() === "") {
         flushPara(key);
         flushList(key);

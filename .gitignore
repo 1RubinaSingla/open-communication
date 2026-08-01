@@ -16,3 +16,4 @@ data/
 # solana treasury secret (never commit)
 *.key
 .treasury*
+*.tsbuildinfo

@@ -62,11 +62,14 @@ export default function ContributePage() {
         let firstTokenMs = 0;
         let out = "";
         try {
-          // web-llm types the non-streaming overload by default; we always stream.
-          const chunks = (await engine.chat.completions.create({
-            messages: job.messages,
-            stream: true,
-          } as any)) as unknown as AsyncIterable<any>;
+          // web-llm types messages as a discriminated union; our wire type is
+          // the plain {role, content} shape, so narrow it explicitly.
+          const messages: { role: "system" | "user" | "assistant"; content: string }[] =
+            job.messages.map((m) => ({
+              role: m.role === "system" ? "system" : m.role === "assistant" ? "assistant" : "user",
+              content: m.content,
+            }));
+          const chunks = await engine.chat.completions.create({ messages, stream: true });
           for await (const chunk of chunks) {
             const delta = chunk.choices?.[0]?.delta?.content ?? "";
             if (delta) {
