@@ -39,9 +39,6 @@ one decentralised network:
 | X bot (`/prove`), $0C token gate, buyback-and-burn | ⚙️ built, awaiting launch |
 | Anti-cheat enforcement, pipeline-parallel serving | 📋 roadmap |
 
-**The `$0C` token is a published design and is not yet minted or tradeable.**
-Nothing here is an offer to sell a security or investment advice.
-
 ## Verified in public
 
 The network can produce **machine-checked proofs**, and every such run is signed
