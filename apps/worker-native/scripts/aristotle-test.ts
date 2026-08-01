@@ -1,0 +1,23 @@
+import { io } from "socket.io-client";
+const ORCH = "http://localhost:4103";
+const auth = await fetch(`${ORCH}/auth/dev`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({userId:"artest"}) }).then(r=>r.json());
+const before = await fetch(`${ORCH}/me`, { headers:{Authorization:`Bearer ${auth.token}`}}).then(r=>r.json()).then(d=>d.balance);
+const s = io(`${ORCH}/infer`, { auth:{kind:"user",token:auth.token}, transports:["websocket"] });
+await new Promise<void>(r=>s.on("connect",()=>r()));
+const steps:string[]=[];
+const done = new Promise<any>(res=>{
+  s.on("job.step",(p:any)=>{steps.push(p.text);console.log("  step:",p.text);});
+  s.on("job.done",(p:any)=>res({done:p}));
+  s.on("job.error",(p:any)=>res({error:p}));
+});
+s.emit("job.submit",{jobId:"ar-"+Date.now(),model:"aristotle-verified",kind:"chat",messages:[{role:"user",content:"Prove that sqrt(2) is irrational."}]});
+const r:any = await done;
+const after = await fetch(`${ORCH}/me`, { headers:{Authorization:`Bearer ${auth.token}`}}).then(x=>x.json()).then(d=>d.balance);
+let pass=true; const ck=(n:string,ok:boolean)=>{console.log(`   ${ok?"✓":"✗"} ${n}`); if(!ok)pass=false;};
+ck("streamed the 'leaves network' warning step", steps.some(x=>x.includes("leaves the 0_C network")));
+ck("failed gracefully (no crash)", !!r.error);
+ck("error reported as refunded", r.error?.refunded === true);
+ck("credits refunded (balance unchanged)", after === before);
+s.close();
+console.log("\n"+(pass?"OK — Aristotle job path safe (labels + refund).":"FAIL"));
+process.exit(pass?0:1);
