@@ -1,0 +1,43 @@
+name: Bug report
+description: Something behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security vulnerabilities, please email contact@opencommunication.app
+        instead — see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start the orchestrator with …
+        2. Send …
+        3. Observe …
+    validations: { required: true }
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Orchestrator (routing, credits, API)
+        - Web app
+        - Worker
+        - Messaging / encryption
+        - Solana (deposits, withdrawals, staking)
+        - Agents / verified maths
+        - Other
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output. Redact any keys or tokens first.
+      render: shell

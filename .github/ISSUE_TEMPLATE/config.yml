@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/1RubinaSingla/open-communication/security/policy
+    about: Please report privately by email rather than opening an issue.
+  - name: Contact
+    url: https://opencommunication.app/contact
+    about: General questions and partnerships.

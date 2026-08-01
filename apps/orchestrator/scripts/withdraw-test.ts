@@ -1,6 +1,6 @@
 /** Unit tests for withdrawal caps, atomic deduct, refund, and key loading. */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { Keypair } from "@solana/web3.js";
+import bs58 from "bs58";
 import { createDb } from "@0c/db";
 import { loadKeypair } from "../src/payout.js";
 
@@ -83,12 +83,16 @@ check("submitted failure does NOT refund (no double-pay)", db.balanceOf("alice")
 check("unconfirmed withdrawal marked review", db.getWithdrawal(w4.id)!.status === "review");
 
 console.log("4) key loading");
-try {
-  const keyFile = resolve(process.cwd(), "../../.treasury-devnet.key");
-  const b64 = readFileSync(keyFile, "utf8").split("\n").find((l) => l.startsWith("TREASURY_SECRET_BASE64="))!.split("=").slice(1).join("=").trim();
-  check("base64 key → correct pubkey", loadKeypair(b64).publicKey.toBase58() === "DDEqi2y5YLsEUYdavkfEHKbJmSxF4TfA8Xj99LqerV5m");
-} catch (e) {
-  check("base64 key loads", false);
+{
+  // Generate a keypair rather than reading an operator's key file, so this runs
+  // anywhere (including CI) with no secrets present.
+  const kp = Keypair.generate();
+  const b64 = Buffer.from(kp.secretKey).toString("base64");
+  check("base64 key -> correct pubkey", loadKeypair(b64).publicKey.toBase58() === kp.publicKey.toBase58());
+  const json = JSON.stringify(Array.from(kp.secretKey));
+  check("JSON-array key -> correct pubkey", loadKeypair(json).publicKey.toBase58() === kp.publicKey.toBase58());
+  check("base58 key -> correct pubkey", loadKeypair(bs58.encode(kp.secretKey)).publicKey.toBase58() === kp.publicKey.toBase58());
+  check("garbage key is rejected", (() => { try { loadKeypair("nonsense"); return false; } catch { return true; } })());
 }
 
 console.log("\n" + (pass ? "OK — SOL withdrawal logic verified." : "FAIL — see above."));

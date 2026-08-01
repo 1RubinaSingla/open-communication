@@ -59,7 +59,7 @@ export function AsciiBackground({ className = "" }: { className?: string }) {
             Math.sin(Math.hypot(x - cx, y - cy) * 0.2 - t);
           const n = (v + 4) / 8; // 0..1
           const idx = Math.min(CHARS.length - 1, Math.max(0, Math.floor(n * (CHARS.length - 1))));
-          const ch = CHARS[idx];
+          const ch = CHARS[idx] ?? " ";
           if (ch === " ") continue;
           // Brighter glyphs at field peaks, dim mint in the troughs.
           const a = 0.1 + n * n * 0.7;

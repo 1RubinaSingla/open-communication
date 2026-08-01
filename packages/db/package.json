@@ -14,10 +14,10 @@
   },
   "dependencies": {
     "@0c/credits": "workspace:*",
-    "better-sqlite3": "^11.8.1"
+    "better-sqlite3": "^11.8.1",
+    "@types/better-sqlite3": "^7.6.12"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "typescript": "^5.7.3"
   }
 }

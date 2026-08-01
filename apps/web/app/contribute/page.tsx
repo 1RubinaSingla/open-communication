@@ -62,7 +62,11 @@ export default function ContributePage() {
         let firstTokenMs = 0;
         let out = "";
         try {
-          const chunks = await engine.chat.completions.create({ messages: job.messages, stream: true });
+          // web-llm types the non-streaming overload by default; we always stream.
+          const chunks = (await engine.chat.completions.create({
+            messages: job.messages,
+            stream: true,
+          } as any)) as unknown as AsyncIterable<any>;
           for await (const chunk of chunks) {
             const delta = chunk.choices?.[0]?.delta?.content ?? "";
             if (delta) {

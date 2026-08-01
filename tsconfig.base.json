@@ -14,7 +14,11 @@
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true,
+    // Workspace packages are consumed as TypeScript source (their "main" points
+    // at src/index.ts), so no .d.ts is ever emitted or read. Emitting them only
+    // produces TS4058-style errors for types that can't be named across
+    // packages.
+    "declaration": false,
     "sourceMap": true
   }
 }

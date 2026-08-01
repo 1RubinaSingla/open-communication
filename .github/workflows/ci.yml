@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: typecheck & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+  verify:
+    name: protocol & ledger tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # These run offline against in-memory SQLite — no keys or network needed.
+      - name: Credit ledger, caps and withdrawal rules
+        run: pnpm --filter @0c/orchestrator exec tsx scripts/withdraw-test.ts
+      - name: Staking maths
+        run: pnpm --filter @0c/orchestrator exec tsx scripts/staking-test.ts
+      - name: Provenance attestations
+        run: pnpm --filter @0c/orchestrator exec tsx scripts/attest-test.ts
+      - name: Trivial-math pre-filter
+        run: pnpm --filter @0c/orchestrator exec tsx scripts/prefilter-test.ts
+      - name: X bot gating and linking
+        run: pnpm --filter @0c/orchestrator exec tsx scripts/xbot-test.ts

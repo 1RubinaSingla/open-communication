@@ -4,7 +4,11 @@
 One network, one identity, one credit economy — for talking to a model *and* to
 each other.
 
-[opencommunication.app](https://opencommunication.app) · [@O_C_](https://x.com/O_C_)
+[![CI](https://github.com/1RubinaSingla/open-communication/actions/workflows/ci.yml/badge.svg)](https://github.com/1RubinaSingla/open-communication/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Solana](https://img.shields.io/badge/chain-Solana-14F195)](https://solana.com)
+
+[opencommunication.app](https://opencommunication.app) · [@O_C_](https://x.com/O_C_) · [Whitepaper](WHITEPAPER.md)
 
 ---
 
@@ -122,12 +126,19 @@ to a third party under their terms. Every such step is labelled
 **⚠ leaves network** in the interface. All other inference runs inside the
 network. See [`WHITEPAPER.md`](WHITEPAPER.md).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). The stack runs end to end with no
+external services, and CI runs typecheck, build and the ledger/staking/
+attestation/bot suites on every pull request.
+
 ## Security
 
 Deposits are non-custodial and idempotent. Withdrawals are capped by lifetime
 deposits and earnings, so promotional credits can never be cashed out. Please
 report vulnerabilities privately to **contact@opencommunication.app** rather than
-opening a public issue.
+opening a public issue — see [SECURITY.md](SECURITY.md), which also lists the
+known limitations we already know about.
 
 ## License
 
