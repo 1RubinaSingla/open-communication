@@ -183,13 +183,13 @@ importers:
       '@0c/credits':
         specifier: workspace:*
         version: link:../credits
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
       better-sqlite3:
         specifier: ^11.8.1
         version: 11.10.0
     devDependencies:
-      '@types/better-sqlite3':
-        specifier: ^7.6.12
-        version: 7.6.13
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
