@@ -1,15 +1,15 @@
 /**
- * SOL/USD price with layered sources and a short cache:
+ * ETH/USD price with layered sources and a short cache:
  *   1. Pyth (Hermes) — a decentralized on-chain oracle, primary.
  *   2. CoinGecko — secondary.
- *   3. Fixed SOL_USD_PRICE fallback — so deposits never break on mainnet.
+ *   3. Fixed ETH_USD_PRICE fallback — so deposits never break on mainnet.
  */
-const PYTH_SOL_USD = "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
+const PYTH_ETH_USD = "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace";
 
 async function fromPyth(): Promise<number | null> {
   try {
     const res = await fetch(
-      `https://hermes.pyth.network/v2/updates/price/latest?ids[]=${PYTH_SOL_USD}`,
+      `https://hermes.pyth.network/v2/updates/price/latest?ids[]=${PYTH_ETH_USD}`,
       { signal: AbortSignal.timeout(3000) },
     );
     const json = (await res.json()) as { parsed?: Array<{ price?: { price?: string; expo?: number } }> };
@@ -27,11 +27,11 @@ async function fromPyth(): Promise<number | null> {
 async function fromCoinGecko(): Promise<number | null> {
   try {
     const res = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
+      "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
       { signal: AbortSignal.timeout(3000) },
     );
-    const json = (await res.json()) as { solana?: { usd?: number } };
-    const v = json?.solana?.usd;
+    const json = (await res.json()) as { ethereum?: { usd?: number } };
+    const v = json?.ethereum?.usd;
     if (typeof v === "number" && v > 0) return v;
   } catch {
     /* ignore */
@@ -44,7 +44,7 @@ export function makePrice(fallback: number, ttlMs = 60_000) {
   let at = 0;
   let source = "fallback";
 
-  async function getSolUsd(): Promise<number> {
+  async function getEthUsd(): Promise<number> {
     const now = Date.now();
     if (cached > 0 && now - at < ttlMs) return cached;
     const pyth = await fromPyth();
@@ -65,5 +65,5 @@ export function makePrice(fallback: number, ttlMs = 60_000) {
     return cached > 0 ? cached : fallback;
   }
 
-  return { getSolUsd, priceSource: () => source };
+  return { getEthUsd, priceSource: () => source };
 }

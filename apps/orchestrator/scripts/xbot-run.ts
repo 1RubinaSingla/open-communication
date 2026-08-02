@@ -59,7 +59,9 @@ async function main() {
   if (!cfg.handle) return console.log("[xbot] no X_BOT_HANDLE set.");
 
   // resolve our own numeric id (owned reads are the cheap tier)
-  const me = await fetch(`${X_API}/users/by/username/${cfg.handle}`, { headers: xHeaders }).then((r) => r.json());
+  const me = (await fetch(`${X_API}/users/by/username/${cfg.handle}`, { headers: xHeaders }).then((r) =>
+    r.json(),
+  )) as { data?: { id?: string } };
   const myId = me?.data?.id;
   if (!myId) return console.error("[xbot] could not resolve bot user id:", JSON.stringify(me).slice(0, 200));
 

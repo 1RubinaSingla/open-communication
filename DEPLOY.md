@@ -69,25 +69,32 @@ site becomes a WebGPU worker using their own login token — no secret required.
 
 ---
 
-## Solana credit deposits (optional)
+## Ethereum credit deposits (optional)
 
-To enable the "Add credits · SOL" on-ramp, set these on the **orchestrator**
+To enable the "Add credits" on-ramp (ETH + USDT), set these on the **orchestrator**
 (Railway) service — the web app reads them via `/credits/config`:
 
 ```
 DEPOSITS_ENABLED=true
-SOLANA_CLUSTER=devnet                     # or mainnet-beta
-SOLANA_RPC_URL=https://api.devnet.solana.com   # use a paid RPC for mainnet
-TREASURY_ADDRESS=<a Solana address you control>
-SOL_USD_PRICE=150                         # feeds SOL->credits; use an oracle in prod
+ETH_CHAIN=sepolia                         # or mainnet
+ETH_RPC_URL=https://rpc.sepolia.org       # use a paid RPC for mainnet
+TREASURY_ADDRESS=<an Ethereum address you control>
+DEPOSIT_MNEMONIC=<12/24-word BIP-39 phrase>   # derives per-user deposit addresses
+ETH_USD_PRICE=3000                        # fallback only; Pyth is primary
 ```
 
-Users pay SOL to the treasury from Phantom (with a memo binding the payment to
-their account); the orchestrator verifies the transaction on-chain and credits
-them. It's **non-custodial** (the treasury only receives) and **idempotent** (one
-credit per signature). To go to mainnet, change the three `SOLANA_*`/`TREASURY`
-values and use a real price oracle. Devnet SOL comes free from
-<https://faucet.solana.com>.
+Each account is issued its own deposit address, derived from `DEPOSIT_MNEMONIC`
+at `m/44'/60'/0'/0/<n>`. Users send ETH or USDT there from any browser wallet;
+the orchestrator verifies the transaction on-chain and credits it once
+`ETH_CONFIRMATIONS` blocks have passed. Crediting is **idempotent** (one credit
+per transaction hash).
+
+⚠️ **This is custodial.** `DEPOSIT_MNEMONIC` controls every user's deposit
+address — back it up, never reuse a personal wallet's phrase, and sweep balances
+to `TREASURY_ADDRESS` on a schedule. Losing the phrase strands every deposit.
+
+To go to mainnet, set `ETH_CHAIN=mainnet` with a paid RPC. Sepolia ETH comes free
+from <https://sepoliafaucet.com>.
 
 ## Notes / caveats
 

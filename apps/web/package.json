@@ -14,14 +14,12 @@
     "@0c/crypto": "workspace:*",
     "@0c/protocol": "workspace:*",
     "@mlc-ai/web-llm": "^0.2.79",
-    "@solana/spl-token": "^0.4.14",
-    "@solana/web3.js": "^1.98.4",
     "bs58": "^6.0.0",
-    "buffer": "^6.0.3",
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "viem": "^2.55.10"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

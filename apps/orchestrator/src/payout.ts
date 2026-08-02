@@ -1,26 +1,26 @@
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import {
-  createAssociatedTokenAccountInstruction,
-  createTransferCheckedInstruction,
-  getAssociatedTokenAddress,
-} from "@solana/spl-token";
-import bs58 from "bs58";
+  createPublicClient,
+  createWalletClient,
+  http,
+  parseEther,
+  parseUnits,
+  erc20Abi,
+  isAddress,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { mainnet, sepolia } from "viem/chains";
+import { USDT_DECIMALS } from "./eth.js";
 
-const USDC_DECIMALS = 6;
-
-/** Parse a treasury secret key from base58 (Phantom export), JSON array, or base64. */
-export function loadKeypair(secret: string): Keypair {
-  const s = secret.trim();
-  if (s.startsWith("[")) return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(s)));
-  try {
-    const b = bs58.decode(s);
-    if (b.length === 64) return Keypair.fromSecretKey(b);
-  } catch {
-    /* not base58 */
+/**
+ * Parse a treasury private key. Accepts the usual MetaMask export shape (32
+ * bytes of hex, with or without the 0x prefix).
+ */
+export function loadAccount(secret: string) {
+  const s = secret.trim().replace(/^0x/i, "");
+  if (!/^[0-9a-fA-F]{64}$/.test(s)) {
+    throw new Error("bad TREASURY_PRIVATE_KEY (expected 32 bytes of hex)");
   }
-  const b = Buffer.from(s, "base64");
-  if (b.length === 64) return Keypair.fromSecretKey(new Uint8Array(b));
-  throw new Error("bad TREASURY_SECRET_KEY (expected base58, JSON array, or base64 of 64 bytes)");
+  return privateKeyToAccount(`0x${s}`);
 }
 
 export interface PayoutResult {
@@ -30,71 +30,80 @@ export interface PayoutResult {
 }
 
 /**
- * Sends `amountUsdc` USDC from the treasury to `recipient`, creating the
- * recipient's token account if needed. `submitted` tells the caller whether a
- * tx reached the network (so credits are NOT refunded on an uncertain failure).
+ * Withdrawal payouts from the treasury.
+ *
+ * `submitted` tells the caller whether a transaction actually reached the
+ * network. Once it has, credits must NOT be refunded on a later error — the
+ * money may well be moving — which is why every send flips the flag the instant
+ * the broadcast resolves, before waiting for the receipt.
  */
-export function makePayout(cfg: { rpcUrl: string; cluster: string; usdcMint: string; secretKey: string }) {
-  const commitment = cfg.cluster === "mainnet-beta" ? "finalized" : "confirmed";
-  const connection = new Connection(cfg.rpcUrl, commitment);
-  const treasury = loadKeypair(cfg.secretKey);
-  const mint = new PublicKey(cfg.usdcMint);
+export function makePayout(cfg: {
+  rpcUrl: string;
+  chain: "mainnet" | "sepolia";
+  usdtAddress: string;
+  privateKey: string;
+}) {
+  const chain = cfg.chain === "mainnet" ? mainnet : sepolia;
+  const account = loadAccount(cfg.privateKey);
+  const publicClient = createPublicClient({ chain, transport: http(cfg.rpcUrl) });
+  const wallet = createWalletClient({ account, chain, transport: http(cfg.rpcUrl) });
 
-  async function payUsdc(recipient: string, amountUsdc: number, onSignature: (sig: string) => void): Promise<PayoutResult> {
+  /** Send USDT from the treasury to `recipient`. */
+  async function payUsdt(
+    recipient: string,
+    amountUsdt: number,
+    onSignature: (sig: string) => void,
+  ): Promise<PayoutResult> {
     let submitted = false;
     try {
-      const to = new PublicKey(recipient);
-      const fromAta = await getAssociatedTokenAddress(mint, treasury.publicKey);
-      const toAta = await getAssociatedTokenAddress(mint, to);
+      if (!isAddress(recipient, { strict: false })) throw new Error("invalid recipient address");
+      const value = parseUnits(String(amountUsdt), USDT_DECIMALS);
 
-      const tx = new Transaction();
-      if (!(await connection.getAccountInfo(toAta))) {
-        tx.add(createAssociatedTokenAccountInstruction(treasury.publicKey, toAta, to, mint));
-      }
-      const amount = BigInt(Math.round(amountUsdc * 10 ** USDC_DECIMALS));
-      tx.add(createTransferCheckedInstruction(fromAta, mint, toAta, treasury.publicKey, amount, USDC_DECIMALS));
-
-      tx.feePayer = treasury.publicKey;
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      tx.sign(treasury);
-
-      // Broadcast (with preflight). If this throws, the tx never landed → safe to refund.
-      const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-      onSignature(sig);
+      const hash = await wallet.writeContract({
+        address: cfg.usdtAddress as `0x${string}`,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [recipient as `0x${string}`, value],
+      });
+      onSignature(hash);
       submitted = true; // it's on the network now — do NOT refund on later uncertainty
 
-      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, commitment);
-      return { signature: sig, submitted: true };
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") {
+        return { signature: hash, submitted: true, error: "transfer reverted on-chain" };
+      }
+      return { signature: hash, submitted: true };
     } catch (err) {
       return { submitted, error: err instanceof Error ? err.message : String(err) };
     }
   }
 
-  /** Send native SOL from the treasury to `recipient`. Same submitted-flag safety. */
-  async function paySol(recipient: string, amountSol: number, onSignature: (sig: string) => void): Promise<PayoutResult> {
+  /** Send native ETH from the treasury to `recipient`. Same submitted-flag safety. */
+  async function payEth(
+    recipient: string,
+    amountEth: number,
+    onSignature: (sig: string) => void,
+  ): Promise<PayoutResult> {
     let submitted = false;
     try {
-      const to = new PublicKey(recipient);
-      const lamports = Math.round(amountSol * 1e9);
-      const tx = new Transaction().add(
-        SystemProgram.transfer({ fromPubkey: treasury.publicKey, toPubkey: to, lamports }),
-      );
-      tx.feePayer = treasury.publicKey;
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      tx.sign(treasury);
+      if (!isAddress(recipient, { strict: false })) throw new Error("invalid recipient address");
 
-      const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-      onSignature(sig);
+      const hash = await wallet.sendTransaction({
+        to: recipient as `0x${string}`,
+        value: parseEther(String(amountEth)),
+      });
+      onSignature(hash);
       submitted = true;
 
-      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, commitment);
-      return { signature: sig, submitted: true };
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") {
+        return { signature: hash, submitted: true, error: "transfer reverted on-chain" };
+      }
+      return { signature: hash, submitted: true };
     } catch (err) {
       return { submitted, error: err instanceof Error ? err.message : String(err) };
     }
   }
 
-  return { payUsdc, paySol, treasuryPubkey: treasury.publicKey.toBase58() };
+  return { payUsdt, payEth, treasuryAddress: account.address };
 }

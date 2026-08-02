@@ -6,7 +6,7 @@ each other.
 
 [![CI](https://github.com/1RubinaSingla/open-communication/actions/workflows/ci.yml/badge.svg)](https://github.com/1RubinaSingla/open-communication/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Solana](https://img.shields.io/badge/chain-Solana-14F195)](https://solana.com)
+[![Ethereum](https://img.shields.io/badge/chain-Ethereum-627EEA)](https://ethereum.org)
 
 [opencommunication.app](https://opencommunication.app) · [@O_C_](https://x.com/O_C_) · [Whitepaper](WHITEPAPER.md)
 
@@ -37,9 +37,9 @@ one decentralised network:
 | Agents with tools (web search, calculator, verified maths) | ✅ live |
 | Formally-verified maths via Harmonic Aristotle | ✅ live |
 | Signed provenance for external runs | ✅ live |
-| Solana deposits (SOL + USDC, on-chain verified) | ✅ live |
+| Ethereum deposits (ETH + USDT, on-chain verified) | ✅ live |
 | Credit staking (reward-per-share) | ✅ live |
-| SOL withdrawals | ⚙️ built, disabled by default |
+| ETH withdrawals | ⚙️ built, disabled by default |
 | X bot (`/prove`), $0C token gate, buyback-and-burn | ⚙️ built, awaiting launch |
 | Anti-cheat enforcement, pipeline-parallel serving | 📋 roadmap |
 
@@ -68,7 +68,7 @@ hypothesis, and proves the *model* rather than the running code.
 ```
 apps/
   web/            Next.js — chat, encrypted messages, create, staking, dashboard, /v1 API
-  orchestrator/   Fastify + Socket.IO — /infer + /comms, credits, Solana, attestations
+  orchestrator/   Fastify + Socket.IO — /infer + /comms, credits, Ethereum, attestations
   worker-native/  Node worker — Ollama for real models, built-in echo fallback
 packages/
   protocol/       Zod wire schemas (single source of truth for every message)
@@ -134,7 +134,13 @@ attestation/bot suites on every pull request.
 
 ## Security
 
-Deposits are non-custodial and idempotent. Withdrawals are capped by lifetime
+**Deposits are custodial.** Each account gets its own Ethereum deposit address,
+derived from a master mnemonic the orchestrator holds — that address is what
+binds a payment to an account, since Ethereum has no memo field. Whoever holds
+`DEPOSIT_MNEMONIC` controls every deposit address, so treat it as the most
+sensitive secret in the deployment.
+
+Crediting is idempotent per transaction hash. Withdrawals are capped by lifetime
 deposits and earnings, so promotional credits can never be cashed out. Please
 report vulnerabilities privately to **contact@opencommunication.app** rather than
 opening a public issue — see [SECURITY.md](SECURITY.md), which also lists the

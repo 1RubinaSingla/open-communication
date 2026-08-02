@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { ORCH_URL } from "@/lib/config";
-import { connectWallet } from "@/lib/solana";
+import { connectWallet } from "@/lib/eth";
 
 interface XConfig {
   enabled: boolean;

@@ -1,134 +1,180 @@
 /**
- * End-to-end devnet test for the Solana deposit on-ramp — no browser wallet
- * needed. Airdrops to a fresh keypair, pays the treasury with a memo, then
- * drives the orchestrator's /credits/deposit endpoint and checks crediting,
- * idempotency, and memo-binding security.
+ * Security core of the Ethereum on-ramp, tested offline.
+ *
+ * With no memo program on Ethereum, a payment is bound to an account purely by
+ * *which address it landed in* — so the tests that matter most are the ones
+ * proving a deposit into someone else's address, or of a lookalike token,
+ * cannot credit you.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import {
-  clusterApiUrl,
-  Connection,
-  Keypair,
-  PublicKey,
-  SystemProgram,
-  Transaction,
-  TransactionInstruction,
-  sendAndConfirmTransaction,
-} from "@solana/web3.js";
+import { mnemonicToAccount } from "viem/accounts";
+import { parseEther, parseUnits, pad, toHex } from "viem";
+import { createDb } from "@0c/db";
+import { interpretTx, usdtDelta, topicToAddress, USDT_MAINNET, USDT_DECIMALS } from "../src/eth.js";
+import type { RawLog, RawReceipt, RawTx } from "../src/eth.js";
 
-const PAYER_FILE = "/tmp/0c-payer.json";
+// Hardhat's well-known public test mnemonic — never used for real funds.
+const MNEMONIC = "test test test test test test test test test test test junk";
+const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
-/** Reuse one payer across runs so we don't hit the faucet repeatedly. */
-function loadPayer(): Keypair {
-  if (existsSync(PAYER_FILE)) {
-    return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(PAYER_FILE, "utf8"))));
+const CFG = { usdtAddress: USDT_MAINNET, ethUsdPrice: 3000, confirmations: 3 };
+const HEAD = 100n;
+
+let pass = true;
+const check = (n: string, ok: boolean) => {
+  console.log(`   ${ok ? "✓" : "✗"} ${n}`);
+  if (!ok) pass = false;
+};
+/** interpretTx throws on every rejection path; this asserts it rejected. */
+const rejects = (n: string, fn: () => unknown) => {
+  let threw = false;
+  try {
+    fn();
+  } catch {
+    threw = true;
   }
-  const kp = Keypair.generate();
-  writeFileSync(PAYER_FILE, JSON.stringify(Array.from(kp.secretKey)));
-  return kp;
-}
+  check(n, threw);
+};
 
-/** Gentle single-shot airdrop via raw RPC (avoids web3's 429 retry storm). */
-async function rawAirdrop(conn: Connection, pk: PublicKey): Promise<boolean> {
-  if ((await conn.getBalance(pk)) >= 0.06 * 1e9) return true; // already funded
-  const r = await fetch(clusterApiUrl("devnet"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "requestAirdrop", params: [pk.toBase58(), 0.2 * 1e9] }),
-  }).then((x) => x.json());
-  if (!r.result) {
-    console.log("   airdrop rejected:", JSON.stringify(r.error ?? r).slice(0, 120));
-    return false;
-  }
-  for (let i = 0; i < 25; i++) {
-    if ((await conn.getBalance(pk)) > 0) return true;
-    await sleep(1500);
-  }
-  return false;
-}
+const addr = (i: number) => mnemonicToAccount(MNEMONIC, { addressIndex: i }).address;
+const MINE = addr(0);
+const THEIRS = addr(1);
+const SENDER = "0x1111111111111111111111111111111111111111";
 
-const ORCH = process.env.ORCH ?? "http://localhost:4100";
-const TREASURY = process.env.TREASURY_ADDRESS ?? "DDEqi2y5YLsEUYdavkfEHKbJmSxF4TfA8Xj99LqerV5m";
-const MEMO = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
-const AMOUNT_SOL = 0.05;
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function token(userId: string): Promise<string> {
-  const r = await fetch(`${ORCH}/auth/dev`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId }),
-  }).then((x) => x.json());
-  return r.token as string;
-}
-
-async function postDeposit(tok: string, signature: string) {
-  const r = await fetch(`${ORCH}/credits/deposit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-    body: JSON.stringify({ signature }),
-  });
-  return { status: r.status, body: await r.json() };
-}
-
-async function main() {
-  const conn = new Connection(clusterApiUrl("devnet"), "confirmed");
-  const payer = loadPayer();
-  console.log("payer:", payer.publicKey.toBase58());
-
-  console.log("1) ensuring payer is funded on devnet…");
-  const funded = await rawAirdrop(conn, payer.publicKey);
-  if (!funded) {
-    console.log(
-      "\nSKIP — devnet faucet is rate-limited right now. Fund this address from",
-      "\n  https://faucet.solana.com  (paste:",
-      payer.publicKey.toBase58() + ") and re-run.",
-    );
-    process.exit(2);
-  }
-  console.log("   funded:", (await conn.getBalance(payer.publicKey)) / 1e9, "SOL");
-
-  const userId = "depositor-" + payer.publicKey.toBase58().slice(0, 6).toLowerCase();
-  const tok = await token(userId);
-
-  console.log(`2) paying ${AMOUNT_SOL} SOL to treasury with memo 0c:${userId}…`);
-  const tx = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey: payer.publicKey,
-      toPubkey: new PublicKey(TREASURY),
-      lamports: Math.round(AMOUNT_SOL * 1e9),
-    }),
-    new TransactionInstruction({ keys: [], programId: MEMO, data: Buffer.from(`0c:${userId}`, "utf8") }),
-  );
-  const signature = await sendAndConfirmTransaction(conn, tx, [payer], { commitment: "confirmed" });
-  console.log("   signature:", signature);
-
-  console.log("3) crediting via /credits/deposit…");
-  const first = await postDeposit(tok, signature);
-  console.log("   ->", JSON.stringify(first.body));
-
-  console.log("4) idempotency: submit the SAME signature again…");
-  const second = await postDeposit(tok, signature);
-  console.log("   ->", JSON.stringify(second.body));
-
-  console.log("5) security: a DIFFERENT user tries to claim the same signature…");
-  const attacker = await token("attacker");
-  const stolen = await postDeposit(attacker, signature);
-  console.log(`   -> status ${stolen.status}: ${JSON.stringify(stolen.body)}`);
-
-  const expected = Math.floor(AMOUNT_SOL * 150 * 100);
-  const pass =
-    first.body.credited === true &&
-    first.body.credits === expected &&
-    second.body.credited === false &&
-    second.body.balance === first.body.balance &&
-    stolen.status === 400;
-  console.log("\n" + (pass ? "OK — deposit on-ramp verified." : "FAIL — see output above."));
-  process.exit(pass ? 0 : 1);
-}
-
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
+const tx = (to: string | null, value: bigint): RawTx => ({ to, from: SENDER, value });
+const receipt = (
+  logs: RawLog[] = [],
+  status: "success" | "reverted" = "success",
+  blockNumber = 90n,
+): RawReceipt => ({ status, blockNumber, logs });
+const transferLog = (token: string, to: string, amount: bigint): RawLog => ({
+  address: token,
+  topics: [TRANSFER_TOPIC, pad(SENDER as `0x${string}`), pad(to as `0x${string}`)],
+  data: toHex(amount),
 });
+
+console.log("1) deposit addresses are derived, deterministic and distinct");
+check("same index → same address", addr(0) === MINE);
+check("different index → different address", MINE !== THEIRS);
+check("addresses look like 0x + 40 hex", /^0x[0-9a-fA-F]{40}$/.test(MINE));
+
+console.log("2) native ETH credits at the live rate");
+const ethOk = interpretTx(tx(MINE, parseEther("0.01")), receipt(), HEAD, CFG, MINE);
+check("currency is ETH", ethOk.currency === "ETH");
+check("0.01 ETH @ $3000 = 3000 credits", ethOk.credits === 3000);
+check("sender recorded", ethOk.sender === SENDER);
+
+console.log("3) a payment into someone else's address cannot credit you");
+rejects("ETH sent to another user's deposit address", () =>
+  interpretTx(tx(THEIRS, parseEther("1")), receipt(), HEAD, CFG, MINE),
+);
+rejects("USDT sent to another user's deposit address", () =>
+  interpretTx(
+    tx(null, 0n),
+    receipt([transferLog(USDT_MAINNET, THEIRS, parseUnits("100", USDT_DECIMALS))]),
+    HEAD,
+    CFG,
+    MINE,
+  ),
+);
+
+console.log("4) on-chain failure and finality");
+rejects("reverted transaction", () =>
+  interpretTx(tx(MINE, parseEther("1")), receipt([], "reverted"), HEAD, CFG, MINE),
+);
+rejects("too few confirmations", () =>
+  interpretTx(tx(MINE, parseEther("1")), receipt([], "success", HEAD), HEAD, CFG, MINE),
+);
+check(
+  "exactly at the confirmation floor is accepted",
+  interpretTx(tx(MINE, parseEther("1")), receipt([], "success", HEAD - 2n), HEAD, CFG, MINE).credits >
+    0,
+);
+
+console.log("5) USDT is read from Transfer logs at 1 USDT = $1");
+const usdtOk = interpretTx(
+  tx(null, 0n),
+  receipt([transferLog(USDT_MAINNET, MINE, parseUnits("25", USDT_DECIMALS))]),
+  HEAD,
+  CFG,
+  MINE,
+);
+check("currency is USDT", usdtOk.currency === "USDT");
+check("25 USDT = 2500 credits", usdtOk.credits === 2500);
+
+console.log("6) a lookalike token cannot mint credits");
+rejects("Transfer log from a different token contract", () =>
+  interpretTx(
+    tx(null, 0n),
+    receipt([
+      transferLog(
+        "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        MINE,
+        parseUnits("1000000", USDT_DECIMALS),
+      ),
+    ]),
+    HEAD,
+    CFG,
+    MINE,
+  ),
+);
+
+console.log("7) log parsing");
+check(
+  "usdtDelta sums multiple transfers to the same address",
+  usdtDelta(
+    [
+      transferLog(USDT_MAINNET, MINE, parseUnits("10", USDT_DECIMALS)),
+      transferLog(USDT_MAINNET, MINE, parseUnits("5", USDT_DECIMALS)),
+      transferLog(USDT_MAINNET, THEIRS, parseUnits("999", USDT_DECIMALS)),
+    ],
+    USDT_MAINNET,
+    MINE,
+  ) === 15,
+);
+check(
+  "topicToAddress unpads a 32-byte topic",
+  topicToAddress(pad(MINE as `0x${string}`)) === MINE.toLowerCase(),
+);
+check(
+  "address match ignores checksum casing",
+  usdtDelta(
+    [transferLog(USDT_MAINNET.toLowerCase(), MINE.toLowerCase(), parseUnits("1", USDT_DECIMALS))],
+    USDT_MAINNET,
+    MINE,
+  ) === 1,
+);
+
+console.log("8) dust cannot be credited");
+rejects("deposit rounding to zero credits", () =>
+  interpretTx(tx(MINE, 1n), receipt(), HEAD, CFG, MINE),
+);
+rejects("empty transaction", () => interpretTx(tx(MINE, 0n), receipt(), HEAD, CFG, MINE));
+
+console.log("9) crediting is idempotent against a real ledger");
+const db = createDb(":memory:", { signupGrant: 0 });
+db.ensureUser("alice");
+const HASH = "0xAbCdEf0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+const first = db.creditDeposit("alice", 3000, HASH);
+check("first credit lands", first.credited && first.balance === 3000);
+check("replaying the same hash is a no-op", db.creditDeposit("alice", 3000, HASH).credited === false);
+// The ledger lowercases the ref, so a differently-cased hash is still the same
+// transaction and must not credit twice.
+check(
+  "same hash in different case does not double-credit",
+  db.creditDeposit("alice", 3000, HASH.toLowerCase()).credited === false,
+);
+check("balance unchanged after replays", db.balanceOf("alice") === 3000);
+check("deposits count toward the withdrawal cap", db.withdrawableOf("alice") === 3000);
+
+console.log("10) deposit indices are stable and unique per account");
+const iAlice = db.depositIndexFor("alice");
+const iBob = db.depositIndexFor("bob");
+check("index is stable across calls", db.depositIndexFor("alice") === iAlice);
+check("different accounts get different indices", iAlice !== iBob);
+check(
+  "and therefore different deposit addresses",
+  addr(iAlice) !== addr(iBob),
+);
+
+console.log("\n" + (pass ? "OK — Ethereum deposit logic verified." : "FAIL — see above."));
+process.exit(pass ? 0 : 1);

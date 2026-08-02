@@ -19,7 +19,7 @@ const BADGES = [
   "LEAN 4 · MACHINE-CHECKED",
   "X25519 · XCHACHA20",
   "ED25519 ATTESTED",
-  "SOLANA SETTLED",
+  "ETHEREUM SETTLED",
 ];
 
 export function Hero() {

@@ -3,8 +3,7 @@ import { resolve as resolvePath, join as joinPath } from "node:path";
 import { createReadStream, existsSync as fileExists, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { timingSafeEqual } from "node:crypto";
-import bs58 from "bs58";
-import { ed25519 } from "@noble/curves/ed25519";
+import { recoverMessageAddress } from "viem";
 import Database from "better-sqlite3";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
@@ -29,7 +28,7 @@ import {
   estimateTokens,
 } from "@0c/credits";
 import { makeAuth } from "./auth.js";
-import { makeSolana, isValidPubkey, USDC_MINT_MAINNET } from "./solana.js";
+import { makeEth, isValidAddress, isValidTxHash, USDT_MAINNET } from "./eth.js";
 import { makePrice } from "./price.js";
 import { makePayout } from "./payout.js";
 import { ConnectionRegistry, WorkerRegistry } from "./registry.js";
@@ -56,16 +55,27 @@ const DB_PATH = resolvePath(ROOT, process.env.DB_PATH ?? "./data/0c.sqlite");
 const SIGNUP_GRANT = Number(process.env.SIGNUP_GRANT_CREDITS ?? 500);
 
 const TREASURY = process.env.TREASURY_ADDRESS ?? "";
-const solanaCfg = {
-  enabled: process.env.DEPOSITS_ENABLED === "true" && isValidPubkey(TREASURY),
-  cluster: process.env.SOLANA_CLUSTER ?? "devnet",
-  rpcUrl: process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com",
+// DEPOSIT_MNEMONIC derives one address per user. It is the single most
+// sensitive secret the service holds: whoever has it controls every deposit
+// address, which is why deposits stay off unless it is present.
+const DEPOSIT_MNEMONIC = process.env.DEPOSIT_MNEMONIC ?? "";
+const ethCfg = {
+  enabled:
+    process.env.DEPOSITS_ENABLED === "true" &&
+    isValidAddress(TREASURY) &&
+    DEPOSIT_MNEMONIC.trim().split(/\s+/).length >= 12,
+  chain: (process.env.ETH_CHAIN as "mainnet" | "sepolia") ?? "sepolia",
+  rpcUrl: process.env.ETH_RPC_URL ?? "https://rpc.sepolia.org",
   treasury: TREASURY,
-  solUsdPrice: Number(process.env.SOL_USD_PRICE ?? 150),
-  usdcMint: process.env.USDC_MINT ?? USDC_MINT_MAINNET,
+  mnemonic: DEPOSIT_MNEMONIC,
+  ethUsdPrice: Number(process.env.ETH_USD_PRICE ?? 3000),
+  usdtAddress: process.env.USDT_ADDRESS ?? USDT_MAINNET,
+  // Ethereum reorgs are shallow but real; 3 blocks is the usual exchange floor
+  // for small credits and costs the depositor well under a minute.
+  confirmations: Number(process.env.ETH_CONFIRMATIONS ?? 3),
 };
-const solana = makeSolana(solanaCfg);
-const price = makePrice(solanaCfg.solUsdPrice);
+const eth = makeEth(ethCfg);
+const price = makePrice(ethCfg.ethUsdPrice);
 
 // --- Withdrawals (opt-in; needs the treasury private key) ---
 const withdrawCaps = {
@@ -73,19 +83,22 @@ const withdrawCaps = {
   maxPerRequest: Number(process.env.WITHDRAW_MAX_REQUEST ?? 5000), // $50
   maxPerDay: Number(process.env.WITHDRAW_MAX_DAY ?? 20000), // $200
 };
-let withdrawEnabled = process.env.WITHDRAWALS_ENABLED === "true" && !!process.env.TREASURY_SECRET_KEY && solanaCfg.enabled;
+let withdrawEnabled =
+  process.env.WITHDRAWALS_ENABLED === "true" && !!process.env.TREASURY_PRIVATE_KEY && ethCfg.enabled;
 let payout: ReturnType<typeof makePayout> | null = null;
 if (withdrawEnabled) {
   try {
     payout = makePayout({
-      rpcUrl: solanaCfg.rpcUrl,
-      cluster: solanaCfg.cluster,
-      usdcMint: solanaCfg.usdcMint,
-      secretKey: process.env.TREASURY_SECRET_KEY!,
+      rpcUrl: ethCfg.rpcUrl,
+      chain: ethCfg.chain,
+      usdtAddress: ethCfg.usdtAddress,
+      privateKey: process.env.TREASURY_PRIVATE_KEY!,
     });
-    if (payout.treasuryPubkey !== solanaCfg.treasury) {
+    if (payout.treasuryAddress.toLowerCase() !== ethCfg.treasury.toLowerCase()) {
       // safety: the signing key must control the configured treasury
-      throw new Error(`TREASURY_SECRET_KEY pubkey ${payout.treasuryPubkey} != TREASURY_ADDRESS ${solanaCfg.treasury}`);
+      throw new Error(
+        `TREASURY_PRIVATE_KEY address ${payout.treasuryAddress} != TREASURY_ADDRESS ${ethCfg.treasury}`,
+      );
     }
   } catch (e) {
     withdrawEnabled = false;
@@ -415,39 +428,54 @@ app.get("/ledger", async (req, reply) => {
   return { entries: db.ledgerHistory(userId, 50) };
 });
 
-/** Public deposit config so the wallet UI knows where to pay + at what rate. */
+/** Public deposit config so the wallet UI knows what to send and at what rate. */
 app.get("/credits/config", async () => {
-  const solUsdPrice = await price.getSolUsd();
+  const ethUsdPrice = await price.getEthUsd();
   return {
-    enabled: solanaCfg.enabled,
-    cluster: solanaCfg.cluster,
-    treasury: solanaCfg.treasury,
-    solUsdPrice,
+    enabled: ethCfg.enabled,
+    chain: ethCfg.chain,
+    ethUsdPrice,
     priceSource: price.priceSource(),
     priceLive: true,
-    usdcMint: solanaCfg.usdcMint,
-    currencies: ["SOL", "USDC"],
-    memoPrefix: "0c:",
+    usdtAddress: ethCfg.usdtAddress,
+    currencies: ["ETH", "USDT"],
+    confirmations: ethCfg.confirmations,
   };
 });
 
-/** Verify a SOL deposit on-chain and credit the user. Idempotent by signature. */
+/**
+ * This account's own deposit address. Deposits are bound to an account by
+ * *where* they land, so this address — not a memo — is what ties a payment to
+ * you. The orchestrator holds the derivation key, so funds sent here are
+ * custodial until swept; see SECURITY.md.
+ */
+app.get("/credits/deposit-address", async (req, reply) => {
+  const userId = auth.verify(bearer(req) ?? undefined);
+  if (!userId) return reply.code(401).send({ error: "unauthorized" });
+  if (!ethCfg.enabled) return reply.code(400).send({ error: "deposits are not enabled" });
+  const index = db.depositIndexFor(userId);
+  return { address: eth.depositAddressFor(index), chain: ethCfg.chain };
+});
+
+/** Verify an ETH/USDT deposit on-chain and credit the user. Idempotent by tx hash. */
 app.post("/credits/deposit", async (req, reply) => {
   const userId = auth.verify(bearer(req) ?? undefined);
   if (!userId) return reply.code(401).send({ error: "unauthorized" });
-  if (!solanaCfg.enabled) return reply.code(400).send({ error: "deposits are not enabled" });
-  const body = (req.body ?? {}) as { signature?: string };
-  const signature = (body.signature ?? "").trim();
-  if (!signature) return reply.code(400).send({ error: "signature required" });
+  if (!ethCfg.enabled) return reply.code(400).send({ error: "deposits are not enabled" });
+  const body = (req.body ?? {}) as { txHash?: string; signature?: string };
+  // `signature` is accepted as a legacy alias so an older client still works.
+  const txHash = (body.txHash ?? body.signature ?? "").trim();
+  if (!isValidTxHash(txHash)) return reply.code(400).send({ error: "valid transaction hash required" });
 
   db.ensureUser(userId);
   try {
-    const solUsdPrice = await price.getSolUsd();
-    const result = await solana.verifyDeposit(signature, userId, solUsdPrice);
-    const credit = db.creditDeposit(userId, result.credits, signature);
+    const ethUsdPrice = await price.getEthUsd();
+    const depositAddress = eth.depositAddressFor(db.depositIndexFor(userId));
+    const result = await eth.verifyDeposit(txHash, depositAddress, ethUsdPrice);
+    const credit = db.creditDeposit(userId, result.credits, txHash);
     app.log.info(
-      { userId, signature, credits: result.credits, amount: result.amount, currency: result.currency, credited: credit.credited },
-      "solana deposit",
+      { userId, txHash, credits: result.credits, amount: result.amount, currency: result.currency, credited: credit.credited },
+      "ethereum deposit",
     );
     return {
       ok: true,
@@ -524,20 +552,22 @@ app.post("/me/wallet", async (req, reply) => {
   const signature = String(body.signature ?? "").trim();
   const issuedAt = Number(body.issuedAt ?? 0);
 
-  if (!isValidPubkey(wallet)) return reply.code(400).send({ error: "invalid Solana address" });
+  if (!isValidAddress(wallet)) return reply.code(400).send({ error: "invalid Ethereum address" });
   if (!signature) return reply.code(400).send({ error: "signature required" });
   if (!issuedAt || Math.abs(Date.now() - issuedAt) > WALLET_CHALLENGE_TTL_MS) {
     return reply.code(400).send({ error: "challenge expired — try again" });
   }
 
   // The signature must be over OUR message for THIS account, by THIS wallet.
+  // EIP-191 personal_sign: recover the signer and require it to be the claimed
+  // address, so a valid signature over someone else's challenge proves nothing.
   let ok = false;
   try {
-    ok = ed25519.verify(
-      bs58.decode(signature),
-      new TextEncoder().encode(walletChallenge(userId, issuedAt)),
-      bs58.decode(wallet),
-    );
+    const recovered = await recoverMessageAddress({
+      message: walletChallenge(userId, issuedAt),
+      signature: signature as `0x${string}`,
+    });
+    ok = recovered.toLowerCase() === wallet.toLowerCase();
   } catch {
     ok = false;
   }
@@ -546,7 +576,7 @@ app.post("/me/wallet", async (req, reply) => {
   db.ensureUser(userId);
   db.setWallet(userId, wallet);
   app.log.info({ userId, wallet }, "wallet linked");
-  return { ok: true, wallet };
+  return { ok: true, wallet: wallet.toLowerCase() };
 });
 
 app.delete("/me/wallet", async (req, reply) => {
@@ -611,8 +641,8 @@ app.get("/x/config", async () => ({
 app.post("/x/link/start", async (req, reply) => {
   const userId = auth.verify(bearer(req) ?? undefined);
   if (!userId) return reply.code(401).send({ error: "unauthorized" });
-  const wallet = String((req.body as any)?.wallet ?? "").trim();
-  if (!isValidPubkey(wallet)) return reply.code(400).send({ error: "invalid Solana address" });
+  const wallet = String((req.body as any)?.wallet ?? "").trim().toLowerCase();
+  if (!isValidAddress(wallet)) return reply.code(400).send({ error: "invalid Ethereum address" });
   db.ensureUser(userId);
   const row = db.createXLinkCode(newLinkCode(), userId, wallet);
   return {
@@ -640,14 +670,14 @@ app.get("/x/link/status", async (req, reply) => {
   };
 });
 
-/* ---- withdrawals (credits -> USDC) ---- */
+/* ---- withdrawals (credits -> ETH) ---- */
 app.get("/withdrawals/config", async () => ({
   enabled: withdrawEnabled,
-  currency: "SOL",
+  currency: "ETH",
   min: withdrawCaps.min,
   maxPerRequest: withdrawCaps.maxPerRequest,
   maxPerDay: withdrawCaps.maxPerDay,
-  solUsdPrice: await price.getSolUsd(),
+  ethUsdPrice: await price.getEthUsd(),
 }));
 
 app.get("/withdrawals", async (req, reply) => {
@@ -663,24 +693,24 @@ app.post("/withdrawals", async (req, reply) => {
   const body = (req.body ?? {}) as { credits?: number; address?: string };
   const credits = Math.floor(Number(body.credits ?? 0));
   const address = String(body.address ?? "").trim();
-  if (!isValidPubkey(address)) return reply.code(400).send({ error: "invalid Solana address" });
+  if (!isValidAddress(address)) return reply.code(400).send({ error: "invalid Ethereum address" });
 
   db.ensureUser(userId);
-  const solUsdPrice = await price.getSolUsd();
-  const solAmount = solUsdPrice > 0 ? creditsToUsd(credits) / solUsdPrice : 0;
+  const ethUsdPrice = await price.getEthUsd();
+  const ethAmount = ethUsdPrice > 0 ? creditsToUsd(credits) / ethUsdPrice : 0;
   let w;
   try {
-    w = db.requestWithdrawal(userId, credits, address, withdrawCaps, { amount: solAmount, currency: "SOL" });
+    w = db.requestWithdrawal(userId, credits, address, withdrawCaps, { amount: ethAmount, currency: "ETH" });
   } catch (e) {
     return reply.code(400).send({ error: e instanceof Error ? e.message : "request failed" });
   }
 
   // automatic payout (within caps enforced above)
-  const result = await payout.paySol(address, w.amount, (sig) => db.setWithdrawalSignature(w!.id, sig));
+  const result = await payout.payEth(address, w.amount, (sig) => db.setWithdrawalSignature(w!.id, sig));
   if (result.signature && !result.error) {
     db.markWithdrawalPaid(w.id, result.signature);
-    app.log.info({ userId, id: w.id, sol: w.amount, sig: result.signature }, "withdrawal paid");
-    return { ok: true, status: "paid", signature: result.signature, amount: w.amount, currency: "SOL", credits, balance: db.balanceOf(userId) };
+    app.log.info({ userId, id: w.id, eth: w.amount, tx: result.signature }, "withdrawal paid");
+    return { ok: true, status: "paid", signature: result.signature, amount: w.amount, currency: "ETH", credits, balance: db.balanceOf(userId) };
   }
   // refund only if nothing was submitted on-chain
   db.markWithdrawalFailed(w.id, result.error ?? "payout failed", !result.submitted);

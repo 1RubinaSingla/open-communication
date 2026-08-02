@@ -13,7 +13,7 @@ const STACK = [
   "XCHACHA20-POLY1305",
   "ED25519 ATTESTATION",
   "BLIND RELAY",
-  "SOLANA",
+  "ETHEREUM",
   "PYTH ORACLE",
   "OLLAMA",
   "WEBGPU",
@@ -57,9 +57,9 @@ const CAPABILITIES: { name: string; detail: string; status: Status }[] = [
   { name: "Agents + tools", detail: "web search · calculator · verified_math", status: "LIVE" },
   { name: "Image generation", detail: "worker-served, same credit rails", status: "LIVE" },
   { name: "OpenAI-compatible API", detail: "/v1/chat/completions · streaming", status: "LIVE" },
-  { name: "Solana deposits", detail: "SOL + USDC · memo-bound · Pyth-priced", status: "LIVE" },
+  { name: "Ethereum deposits", detail: "ETH + USDT · per-account address · Pyth-priced", status: "LIVE" },
   { name: "Credit staking", detail: "reward-per-share accounting", status: "LIVE" },
-  { name: "SOL withdrawals", detail: "capped by deposits + earnings", status: "BUILT" },
+  { name: "ETH withdrawals", detail: "capped by deposits + earnings", status: "BUILT" },
   { name: "X bot /prove", detail: "$0C holder gate · buyback-and-burn", status: "SOON" },
   { name: "Pipeline-parallel", detail: "models too big for one GPU · anti-cheat", status: "SOON" },
 ];
@@ -115,8 +115,8 @@ const ECONOMY = [
   },
   {
     k: "DEPOSIT",
-    v: "SOL + USDC",
-    d: "Non-custodial and idempotent: payments carry a memo binding them to your account, priced by the Pyth oracle and verified on-chain.",
+    v: "ETH + USDT",
+    d: "Every account gets its own Ethereum deposit address, so a payment is bound to you by where it lands. Priced by the Pyth oracle, verified on-chain, and credited once per transaction.",
   },
   {
     k: "$0C",

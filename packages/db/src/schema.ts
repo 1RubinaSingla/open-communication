@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
   user_id    TEXT NOT NULL REFERENCES users(id),
   delta      INTEGER NOT NULL,            -- signed credits
   reason     TEXT NOT NULL,              -- grant | reserve | settle | refund | earn | purchase
-  source     TEXT NOT NULL DEFAULT 'system', -- grant | purchase | earn | deposit_solana | system
+  source     TEXT NOT NULL DEFAULT 'system', -- grant | purchase | earn | deposit_eth | system
   ref        TEXT,                        -- e.g. jobId
   created_at INTEGER NOT NULL
 );
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS stakes (
   updated_at  INTEGER NOT NULL
 );
 
--- Withdrawals: credits cashed out to USDC. Credits are deducted atomically on
+-- Withdrawals: credits cashed out to ETH. Credits are deducted atomically on
 -- request; a payout is then sent from the treasury. Refunded only if no payout
 -- was submitted on-chain (never risk a double-pay).
 CREATE TABLE IF NOT EXISTS withdrawals (
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS withdrawals (
   credits    INTEGER NOT NULL,
   amount     REAL NOT NULL,           -- payout amount, in the currency column
   currency   TEXT NOT NULL DEFAULT 'SOL',
-  address    TEXT NOT NULL,           -- recipient Solana address
+  address    TEXT NOT NULL,           -- recipient Ethereum address
   status     TEXT NOT NULL,           -- requested | paid | failed | review
   signature  TEXT,
   error      TEXT,
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS aristotle_projects (
   PRIMARY KEY (user_id, conversation_id)
 );
 
--- X (Twitter) bot: links an X handle to a Solana wallet so token-gating can't be
+-- X (Twitter) bot: links an X handle to an Ethereum wallet so token-gating can't be
 -- spoofed. The user connects the wallet on the site (proves wallet control) and
 -- tweets a one-time code (proves X-account control). Only then is it verified.
 CREATE TABLE IF NOT EXISTS x_links (

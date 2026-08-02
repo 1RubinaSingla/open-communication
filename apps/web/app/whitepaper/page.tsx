@@ -31,7 +31,7 @@ const USE_CASES = [
 ];
 
 const FAQ = [
-  ["Is $0C live?", "No. Credits and on-chain SOL deposits are live; the $0C token is a published design and is not yet minted or tradeable."],
+  ["Is $0C live?", "No. Credits and on-chain ETH/USDT deposits are live; the $0C token is a published design and is not yet minted or tradeable."],
   ["How is my privacy protected?", "Prompts and generated media are never stored — only billing is. Direct messages are encrypted on your device; the relay only ever sees ciphertext."],
   ["What stops a worker from faking results?", "Canary probes, coherence, and throughput checks. Enforcement (slashing) activates once economic stake is attached."],
   ["Do I need crypto to use it?", "No. You can use credits directly. Crypto is the on-ramp and ownership layer, not a requirement to chat or message."],
@@ -143,8 +143,8 @@ export default function WhitepaperPage() {
           per 1K tokens by model; images are flat-priced. Credits are reserved before a job and settled
           to the real cost (refunded on failure) via an atomic reserve→settle→refund ledger. Workers
           earn <b className="text-fg">70%</b> of what they serve; a <b className="text-fg">10%</b> fee on
-          each job flows to stakers. Credits are bought with SOL through a non-custodial, on-chain
-          verified deposit at the live SOL/USD rate.
+          each job flows to stakers. Credits are bought with ETH or USDT through an on-chain
+          verified deposit into your own per-account address, at the live ETH/USD rate.
         </p>
       </Section>
 
@@ -165,9 +165,9 @@ export default function WhitepaperPage() {
         </div>
 
         <p className="pt-2">
-          {TOKEN.ticker} is a <b className="text-fg">pump.fun</b> token. It buys credits, is staked to
+          {TOKEN.ticker} is an <b className="text-fg">ERC-20</b> token on Ethereum. It buys credits, is staked to
           earn protocol fees and boost worker priority, settles worker earnings, and governs protocol
-          parameters. Its <b className="text-fg">creator-reward fees</b> (SOL) fund the treasury, and a
+          parameters. Protocol margin funds the treasury, and a
           share of revenue <b className="text-fg">buys back and burns</b> {TOKEN.ticker} — against a
           fixed {formatSupply()} supply, real usage creates continuous deflationary pressure.
         </p>
@@ -204,8 +204,8 @@ export default function WhitepaperPage() {
 
       <Section tag="RESERVE" title="Treasury &amp; payouts">
         <p>
-          Deposits (SOL/USDC) and {TOKEN.ticker} creator-reward fees accrue to the treasury as a
-          <b className="text-fg"> reserve held in SOL</b>. Withdrawals pay out in <b className="text-fg">SOL</b>
+          Deposits (ETH/USDT) and protocol margin accrue to the treasury as a
+          <b className="text-fg"> reserve held in ETH</b>. Withdrawals pay out in <b className="text-fg">ETH</b>
           at the live oracle price, automatically and within per-request and daily caps.
         </p>
         <p>
@@ -213,7 +213,7 @@ export default function WhitepaperPage() {
           Backing user redemptions with a volatile, self-issued token invites a reflexive
           bank-run/insolvency spiral, so {TOKEN.ticker} accrues value the safe way — through
           fee-funded <b className="text-fg">buyback-and-burn</b> — while redemptions are always covered
-          by real SOL.
+          by real ETH.
         </p>
       </Section>
 
@@ -428,7 +428,7 @@ export default function WhitepaperPage() {
       <Section tag="STATUS" title="What's live vs designed">
         <p>
           Streaming chat, image generation, encrypted messaging, the credit ledger, staking, and
-          on-chain SOL deposits are <b className="text-fg">live</b>. The {TOKEN.ticker} token in the
+          on-chain ETH/USDT deposits are <b className="text-fg">live</b>. The {TOKEN.ticker} token in the
           token section is a <b className="text-fg">design specification</b> — not yet minted or
           tradeable. Nothing here is an offer to sell a security or investment advice; token parameters
           are proposals subject to change before any launch.

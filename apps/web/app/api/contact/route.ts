@@ -1,7 +1,9 @@
+import { CONTACT_EMAIL } from "@/lib/config";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const CONTACT_EMAIL = "contact@opencommunication.app";
+
 
 /**
  * Contact form handler.

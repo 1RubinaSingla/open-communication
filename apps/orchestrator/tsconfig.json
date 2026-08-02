@@ -6,5 +6,7 @@
     "noEmit": true,
     "lib": ["ES2022"]
   },
-  "include": ["src"]
+  // scripts are typechecked too: they touch money (deposits, payouts, the
+  // keeper) and were previously invisible to `tsc`, so they could rot silently.
+  "include": ["src", "scripts"]
 }

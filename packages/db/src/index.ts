@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
-import { creditsToUsdc, settleCost, stakingFee, workerEarn } from "@0c/credits";
+import { creditsToUsdt, settleCost, stakingFee, workerEarn } from "@0c/credits";
 import { SCHEMA_SQL } from "./schema.js";
 
 export type LedgerReason =
@@ -89,6 +89,18 @@ export function createDb(dbPath: string, opts: { signupGrant?: number } = {}) {
   try { db.exec("ALTER TABLE attestations ADD COLUMN public_key TEXT"); } catch { /* exists */ }
   // optional, signature-verified wallet linked to an account
   try { db.exec("ALTER TABLE users ADD COLUMN wallet TEXT"); } catch { /* exists */ }
+  // Per-user Ethereum deposit address index (BIP-44 m/44'/60'/0'/0/<n>). Assigned
+  // on first use and never reused, so the address survives a database restore.
+  try { db.exec("ALTER TABLE users ADD COLUMN deposit_index INTEGER"); } catch { /* exists */ }
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_deposit_index ON users(deposit_index)");
+  } catch { /* exists */ }
+  // Settlement moved from Solana to Ethereum; relabel historical deposit rows so
+  // the withdrawal cap keeps counting them as real money in.
+  try {
+    db.exec("UPDATE ledger_entries SET source = 'deposit_eth' WHERE source = 'deposit_solana'");
+  } catch { /* nothing to migrate */ }
+  try { db.exec("UPDATE withdrawals SET currency = 'ETH' WHERE currency = 'SOL'"); } catch { /* none */ }
 
   const now = () => Date.now();
 
@@ -154,7 +166,7 @@ export function createDb(dbPath: string, opts: { signupGrant?: number } = {}) {
   // withdrawn. Free signup grants are spendable but never cashable, so inventing
   // accounts can't drain the treasury.
   const sumHardIn = db.prepare(
-    "SELECT COALESCE(SUM(delta),0) AS s FROM ledger_entries WHERE user_id = ? AND delta > 0 AND source IN ('purchase','deposit_solana','earn')",
+    "SELECT COALESCE(SUM(delta),0) AS s FROM ledger_entries WHERE user_id = ? AND delta > 0 AND source IN ('purchase','deposit_eth','deposit_solana','earn')",
   );
   const sumWithdrawn = db.prepare(
     "SELECT COALESCE(SUM(credits),0) AS s FROM withdrawals WHERE user_id = ? AND status != 'failed'",
@@ -308,21 +320,40 @@ export function createDb(dbPath: string, opts: { signupGrant?: number } = {}) {
   );
 
   const findDeposit = db.prepare(
-    "SELECT id FROM ledger_entries WHERE ref = ? AND source = 'deposit_solana' LIMIT 1",
+    "SELECT id FROM ledger_entries WHERE ref = ? AND source = 'deposit_eth' LIMIT 1",
   );
 
   /**
-   * Credit a verified on-chain SOL deposit. Idempotent: a given transaction
-   * signature can only ever credit once (unique on-chain), so replaying the same
-   * signature is a no-op. Runs in one synchronous transaction.
+   * Credit a verified on-chain ETH or USDT deposit. Idempotent: a transaction
+   * hash is unique on-chain and can only ever credit once, so replaying the same
+   * hash is a no-op. Runs in one synchronous transaction.
    */
-  const creditDeposit = db.transaction((userId: string, credits: number, signature: string) => {
-    if (findDeposit.get(signature)) {
+  const creditDeposit = db.transaction((userId: string, credits: number, txHash: string) => {
+    const ref = txHash.toLowerCase();
+    if (findDeposit.get(ref)) {
       return { credited: false, balance: balanceOf(userId) };
     }
     insUser.run(userId, userId, 0, now());
-    insLedger.run(randomUUID(), userId, credits, "purchase", "deposit_solana", signature, now());
+    insLedger.run(randomUUID(), userId, credits, "purchase", "deposit_eth", ref, now());
     return { credited: true, balance: balanceOf(userId) };
+  });
+
+  const maxDepositIndex = db.prepare("SELECT MAX(deposit_index) AS m FROM users");
+  const setDepositIndex = db.prepare("UPDATE users SET deposit_index = ? WHERE id = ?");
+
+  /**
+   * The user's BIP-44 address index, assigned on first request. Allocating inside
+   * a transaction is what stops two concurrent callers taking the same index and
+   * therefore sharing a deposit address.
+   */
+  const depositIndexFor = db.transaction((userId: string): number => {
+    insUser.run(userId, userId, 0, now());
+    const existing = (getUser.get(userId) as { deposit_index?: number | null } | undefined)
+      ?.deposit_index;
+    if (typeof existing === "number") return existing;
+    const next = (((maxDepositIndex.get() as { m: number | null }).m) ?? -1) + 1;
+    setDepositIndex.run(next, userId);
+    return next;
   });
 
   /** Lock credits into a stake, settling any pending rewards first. */
@@ -431,7 +462,10 @@ export function createDb(dbPath: string, opts: { signupGrant?: number } = {}) {
     withdrawableOf,
     /** Optional wallet linked to an account (proven by signature). */
     walletOf: (userId: string) => ((getUser.get(userId) as any)?.wallet as string | null) ?? null,
-    setWallet: (userId: string, wallet: string | null) => setUserWallet.run(wallet, userId),
+    // lowercased: EIP-55 checksum casing is cosmetic, and x_links joins on this
+    setWallet: (userId: string, wallet: string | null) =>
+      setUserWallet.run(wallet ? wallet.toLowerCase() : null, userId),
+    depositIndexFor,
     reserve,
     settle,
     refund,

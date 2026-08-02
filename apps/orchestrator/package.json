@@ -15,13 +15,12 @@
     "@0c/protocol": "workspace:*",
     "@fastify/cors": "^10.0.2",
     "@noble/curves": "^1.7.0",
-    "@solana/spl-token": "^0.4.14",
-    "@solana/web3.js": "^1.98.4",
     "better-sqlite3": "^11.8.1",
     "bs58": "^6.0.0",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
     "socket.io": "^4.8.1",
+    "viem": "^2.55.10",
     "zod": "^3.24.1"
   },
   "devDependencies": {

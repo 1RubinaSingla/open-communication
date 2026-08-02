@@ -1,8 +1,7 @@
 /** Unit tests for withdrawal caps, atomic deduct, refund, and key loading. */
-import { Keypair } from "@solana/web3.js";
-import bs58 from "bs58";
 import { createDb } from "@0c/db";
-import { loadKeypair } from "../src/payout.js";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { loadAccount } from "../src/payout.js";
 
 let pass = true;
 const check = (n: string, ok: boolean) => { console.log(`   ${ok ? "✓" : "✗"} ${n}`); if (!ok) pass = false; };
@@ -11,7 +10,7 @@ const throwsWith = (fn: () => unknown, needle: string) => {
 };
 
 const caps = { min: 100, maxPerRequest: 5000, maxPerDay: 20000 };
-const P = { amount: 0.06, currency: "SOL" }; // payout amount comes from the caller (live price)
+const P = { amount: 0.06, currency: "ETH" }; // payout amount comes from the caller (live price)
 const db = createDb(":memory:", { signupGrant: 0 });
 db.ensureUser("alice");
 db.creditDeposit("alice", 10000, "sig-alice-deposit"); // real money in, so it is cashable
@@ -19,11 +18,11 @@ db.creditDeposit("alice", 10000, "sig-alice-deposit"); // real money in, so it i
 console.log("1) caps + atomic deduct");
 const w = db.requestWithdrawal("alice", 500, "RecipientAddr111", caps, P);
 check("deducts credits (10000→9500)", db.balanceOf("alice") === 9500);
-check("stores payout amount + SOL currency", w.amount === 0.06 && w.currency === "SOL");
+check("stores payout amount + ETH currency", w.amount === 0.06 && w.currency === "ETH");
 check("status = requested", w.status === "requested");
 check("rejects below minimum", throwsWith(() => db.requestWithdrawal("alice", 50, "x", caps, P), "minimum"));
 check("rejects above per-request cap", throwsWith(() => db.requestWithdrawal("alice", 6000, "x", caps, P), "maximum per"));
-check("rejects zero payout amount (price feed down)", throwsWith(() => db.requestWithdrawal("alice", 200, "x", caps, { amount: 0, currency: "SOL" }), "payout amount"));
+check("rejects zero payout amount (price feed down)", throwsWith(() => db.requestWithdrawal("alice", 200, "x", caps, { amount: 0, currency: "ETH" }), "payout amount"));
 const dbPoor = createDb(":memory:", { signupGrant: 300 });
 dbPoor.ensureUser("poor");
 check("rejects above balance", throwsWith(() => dbPoor.requestWithdrawal("poor", 400, "x", caps, P), "insufficient"));
@@ -82,18 +81,17 @@ db.markWithdrawalFailed(w4.id, "unconfirmed", false);
 check("submitted failure does NOT refund (no double-pay)", db.balanceOf("alice") === bal2);
 check("unconfirmed withdrawal marked review", db.getWithdrawal(w4.id)!.status === "review");
 
-console.log("4) key loading");
-{
-  // Generate a keypair rather than reading an operator's key file, so this runs
-  // anywhere (including CI) with no secrets present.
-  const kp = Keypair.generate();
-  const b64 = Buffer.from(kp.secretKey).toString("base64");
-  check("base64 key -> correct pubkey", loadKeypair(b64).publicKey.toBase58() === kp.publicKey.toBase58());
-  const json = JSON.stringify(Array.from(kp.secretKey));
-  check("JSON-array key -> correct pubkey", loadKeypair(json).publicKey.toBase58() === kp.publicKey.toBase58());
-  check("base58 key -> correct pubkey", loadKeypair(bs58.encode(kp.secretKey)).publicKey.toBase58() === kp.publicKey.toBase58());
-  check("garbage key is rejected", (() => { try { loadKeypair("nonsense"); return false; } catch { return true; } })());
-}
+console.log("4) treasury key loading");
+// Self-contained: generate a key here rather than reading an operator's file,
+// so this suite runs anywhere, including CI.
+const pk = generatePrivateKey();
+const expected = privateKeyToAccount(pk).address;
+check("0x-prefixed hex key → correct address", loadAccount(pk).address === expected);
+check("bare hex key (no 0x) also loads", loadAccount(pk.slice(2)).address === expected);
+check("whitespace tolerated", loadAccount(`  ${pk}\n`).address === expected);
+check("truncated key rejected", throwsWith(() => loadAccount(pk.slice(0, 40)), "expected 32 bytes"));
+check("non-hex key rejected", throwsWith(() => loadAccount("not-a-key"), "expected 32 bytes"));
+check("empty key rejected", throwsWith(() => loadAccount(""), "expected 32 bytes"));
 
-console.log("\n" + (pass ? "OK — SOL withdrawal logic verified." : "FAIL — see above."));
+console.log("\n" + (pass ? "OK — ETH withdrawal logic verified." : "FAIL — see above."));
 process.exit(pass ? 0 : 1);

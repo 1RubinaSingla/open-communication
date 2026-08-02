@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { ORCH_URL } from "@/lib/config";
-import { signWalletChallenge } from "@/lib/solana";
+import { signWalletChallenge } from "@/lib/eth";
 
 type Phase = "idle" | "signing" | "saving" | "error";
 

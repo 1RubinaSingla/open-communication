@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { CONTACT_EMAIL } from "@/lib/config";
 
-const CONTACT_EMAIL = "contact@opencommunication.app";
 
 type Phase = "idle" | "sending" | "sent" | "drafted" | "error";
 

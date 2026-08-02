@@ -5,7 +5,7 @@ import { Nav } from "@/components/Nav";
 
 const TITLE = "Open Communication — uncensored AI, private messaging, provable maths";
 const DESCRIPTION =
-  "Uncensored AI inference, end-to-end encrypted messaging, and formally verified mathematics on contributed GPUs. Lean 4 proofs via Harmonic Aristotle, signed with ed25519 and settled on Solana. Owned by no one.";
+  "Uncensored AI inference, end-to-end encrypted messaging, and formally verified mathematics on contributed GPUs. Lean 4 proofs via Harmonic Aristotle, signed with ed25519 and settled on Ethereum. Owned by no one.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://opencommunication.app"),
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     "ed25519 attestation",
     "X25519",
     "XChaCha20-Poly1305",
-    "Solana",
+    "Ethereum",
     "contributed GPUs",
     "OpenAI-compatible API",
   ],

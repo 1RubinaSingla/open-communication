@@ -18,12 +18,12 @@ export const TOKEN = {
   symbol: "0C",
   ticker: "$0C",
   name: "Open Communication",
-  chain: "Solana",
-  decimals: 6, // pump.fun tokens use 6 decimals
+  chain: "Ethereum",
+  decimals: 18, // ERC-20 convention
   totalSupply: 1_000_000_000,
-  // NOTE: the mint address is deliberately NOT stored here — it must never be
-  // rendered on the site. Server-side consumers (the keeper) read it from the
-  // OC_MINT env var instead.
+  // NOTE: the contract address is deliberately NOT stored here — it must never
+  // be rendered on the site. Server-side consumers (the keeper) read it from the
+  // OC_TOKEN env var instead.
   status: "launching" as const,
   allocation: [
     { label: "Ecosystem & Community", pct: 40 },
@@ -133,7 +133,7 @@ export function creditsToUsd(credits: number): number {
   return credits * CREDIT_USD;
 }
 
-/** 100 credits ($1.00) = 1 USDC. */
-export function creditsToUsdc(credits: number): number {
+/** 100 credits ($1.00) = 1 USDT. */
+export function creditsToUsdt(credits: number): number {
   return credits / 100;
 }

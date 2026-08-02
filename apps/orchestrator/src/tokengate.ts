@@ -1,4 +1,5 @@
-import { Connection, PublicKey } from "@solana/web3.js";
+import { createPublicClient, http, formatUnits, erc20Abi, isAddress } from "viem";
+import { mainnet, sepolia } from "viem/chains";
 
 /**
  * $0C holder gate for the public X bot.
@@ -8,11 +9,13 @@ import { Connection, PublicKey } from "@solana/web3.js";
  *
  * Thresholds are env-tunable because the dollar value of a fixed token amount
  * moves with price — what gates fairly at launch may be prohibitive later.
- * The mint lives only in the server env (OC_MINT); it is never shipped to the site.
+ * The token address lives only in the server env (OC_TOKEN); it is never
+ * shipped to the site.
  */
 export interface GateConfig {
-  mint: string;
+  token: string;
   rpcUrl: string;
+  chain: "mainnet" | "sepolia";
   tier1: number; // tokens for limited access
   tier2: number; // tokens for unlimited
   tier1DailyLimit: number;
@@ -29,8 +32,9 @@ export interface GateResult {
 
 export function gateConfigFromEnv(): GateConfig {
   return {
-    mint: process.env.OC_MINT ?? "",
-    rpcUrl: process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com",
+    token: process.env.OC_TOKEN ?? "",
+    rpcUrl: process.env.ETH_RPC_URL ?? "https://eth.llamarpc.com",
+    chain: (process.env.ETH_CHAIN as "mainnet" | "sepolia") ?? "mainnet",
     tier1: Number(process.env.XBOT_TIER1_TOKENS ?? 1_000_000),
     tier2: Number(process.env.XBOT_TIER2_TOKENS ?? 10_000_000),
     tier1DailyLimit: Number(process.env.XBOT_TIER1_DAILY ?? 5),
@@ -39,22 +43,36 @@ export function gateConfigFromEnv(): GateConfig {
 
 export function makeTokenGate(cfg: GateConfig) {
   /** True once $0C exists and the gate can be enforced for real. */
-  const configured = !!cfg.mint;
-  const connection = configured ? new Connection(cfg.rpcUrl, "confirmed") : null;
+  const configured = !!cfg.token && isAddress(cfg.token, { strict: false });
+  const client = configured
+    ? createPublicClient({
+        chain: cfg.chain === "mainnet" ? mainnet : sepolia,
+        transport: http(cfg.rpcUrl),
+      })
+    : null;
 
-  /** Total $0C held by a wallet across its token accounts (UI amount). */
+  // Read once and reuse: a token's decimals are immutable.
+  let decimals: number | null = null;
+
+  /** $0C held by a wallet, as a human-readable amount. */
   async function balanceOf(wallet: string): Promise<number> {
-    if (!connection || !cfg.mint) return 0;
+    if (!client || !isAddress(wallet, { strict: false })) return 0;
     try {
-      const res = await connection.getParsedTokenAccountsByOwner(new PublicKey(wallet), {
-        mint: new PublicKey(cfg.mint),
-      });
-      let total = 0;
-      for (const { account } of res.value) {
-        const amt = (account.data as any)?.parsed?.info?.tokenAmount?.uiAmount;
-        if (typeof amt === "number") total += amt;
+      const token = cfg.token as `0x${string}`;
+      if (decimals == null) {
+        decimals = await client.readContract({
+          address: token,
+          abi: erc20Abi,
+          functionName: "decimals",
+        });
       }
-      return total;
+      const raw = await client.readContract({
+        address: token,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [wallet as `0x${string}`],
+      });
+      return Number(formatUnits(raw, decimals));
     } catch {
       return 0;
     }

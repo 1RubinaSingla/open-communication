@@ -41,6 +41,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # These run offline against in-memory SQLite — no keys or network needed.
+      - name: Ethereum deposit binding and crediting
+        run: pnpm --filter @0c/orchestrator exec tsx scripts/deposit-test.ts
       - name: Credit ledger, caps and withdrawal rules
         run: pnpm --filter @0c/orchestrator exec tsx scripts/withdraw-test.ts
       - name: Staking maths

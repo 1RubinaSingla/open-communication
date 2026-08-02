@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { ORCH_URL } from "@/lib/config";
-import { explorerTx } from "@/lib/solana";
+import { explorerTx } from "@/lib/eth";
 
 interface WithdrawConfig {
   enabled: boolean;
@@ -11,7 +11,7 @@ interface WithdrawConfig {
   min: number;
   maxPerRequest: number;
   maxPerDay: number;
-  solUsdPrice: number;
+  ethUsdPrice: number;
 }
 interface Row {
   id: string;
@@ -25,7 +25,7 @@ interface Row {
 
 type Phase = "idle" | "sending" | "done" | "error";
 
-export function WithdrawPanel({ cluster = "mainnet-beta" }: { cluster?: string }) {
+export function WithdrawPanel({ chain = "mainnet" }: { chain?: string }) {
   const { session, refresh, balance } = useAuth();
   const [cfg, setCfg] = useState<WithdrawConfig | null>(null);
   const [amount, setAmount] = useState("500");
@@ -59,7 +59,7 @@ export function WithdrawPanel({ cluster = "mainnet-beta" }: { cluster?: string }
 
   const credits = Math.floor(Number(amount) || 0);
   const usd = credits / 100;
-  const sol = cfg.solUsdPrice > 0 ? usd / cfg.solUsdPrice : 0;
+  const eth = cfg.ethUsdPrice > 0 ? usd / cfg.ethUsdPrice : 0;
 
   async function withdraw() {
     if (!session) return;
@@ -79,7 +79,7 @@ export function WithdrawPanel({ cluster = "mainnet-beta" }: { cluster?: string }
       } else {
         setPhase("done");
         setSig(data.signature);
-        setMsg(`Paid ${Number(data.amount).toFixed(4)} SOL · balance ${data.balance}`);
+        setMsg(`Paid ${Number(data.amount).toFixed(5)} ETH · balance ${data.balance}`);
       }
       await refresh();
       await loadHistory();
@@ -94,12 +94,12 @@ export function WithdrawPanel({ cluster = "mainnet-beta" }: { cluster?: string }
   return (
     <div className="card p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="mono text-sm font-semibold tracking-wide">WITHDRAW · SOL</h2>
+        <h2 className="mono text-sm font-semibold tracking-wide">WITHDRAW · ETH</h2>
         <span className="pill">auto · capped</span>
       </div>
 
       <div className="mb-2">
-        <label className="mono mb-1 block text-[10px] uppercase tracking-wider text-muted">Solana address (recipient)</label>
+        <label className="mono mb-1 block text-[10px] uppercase tracking-wider text-muted">Ethereum address (recipient)</label>
         <input className="input" placeholder="your wallet address" value={address} onChange={(e) => setAddress(e.target.value)} />
       </div>
       <div className="flex items-end gap-2">
@@ -116,7 +116,7 @@ export function WithdrawPanel({ cluster = "mainnet-beta" }: { cluster?: string }
         </button>
       </div>
       <div className="mono mt-2 text-[11px] text-muted">
-        ≈ {sol.toFixed(4)} SOL (${usd.toFixed(2)}) · min {cfg.min} · max {cfg.maxPerRequest}/req · {cfg.maxPerDay}/day
+        ≈ {eth.toFixed(5)} ETH (${usd.toFixed(2)}) · min {cfg.min} · max {cfg.maxPerRequest}/req · {cfg.maxPerDay}/day
       </div>
       {withdrawable !== null && (
         <div className="mono mt-1 text-[11px] text-muted">
@@ -132,7 +132,7 @@ export function WithdrawPanel({ cluster = "mainnet-beta" }: { cluster?: string }
           {sig && (
             <>
               {" · "}
-              <a className="underline" href={explorerTx(sig, cluster)} target="_blank" rel="noreferrer">view tx</a>
+              <a className="underline" href={explorerTx(sig, chain)} target="_blank" rel="noreferrer">view tx</a>
             </>
           )}
         </div>

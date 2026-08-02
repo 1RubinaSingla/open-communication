@@ -7,7 +7,7 @@
 Open Communication is a decentralized network for **uncensored AI inference** and
 **end-to-end encrypted human messaging**, served on GPUs that people contribute
 rather than corporate data centers. It is powered by **$0C**, a fixed-supply
-token of **1,000,000,000** units on Solana.
+token of **1,000,000,000** units on Ethereum.
 
 ---
 
@@ -84,11 +84,14 @@ Credits are the network's **stable unit of account**: **1 credit = $0.01**.
   is worth.
 - **Staking fee.** A slice of every settled job (currently **10%** of the charge)
   flows from protocol margin to the staking rewards pool.
-- **On-ramp.** Credits are purchased with SOL through a **non-custodial** deposit:
-  the user pays the treasury with a memo binding the payment to their account; the
-  orchestrator verifies the transaction on-chain (finalized on mainnet) and
-  credits them. Conversion uses a live SOL/USD price feed. Each transaction
-  signature can credit only once.
+- **On-ramp.** Credits are purchased with **ETH or USDT**. Ethereum has no memo
+  field, so each account is issued its own deposit address, derived from a master
+  seed the orchestrator holds; the destination address is what binds a payment to
+  an account. The orchestrator verifies the transaction on-chain and credits it
+  once a confirmation threshold is met. ETH conversion uses a live ETH/USD price
+  feed; USDT is 1:1. Each transaction hash can credit only once. Because the
+  service holds the derivation seed, **deposit balances are custodial until
+  swept** — an explicit trade-off of the per-address model.
 
 ## 7. The $0C token
 
@@ -97,24 +100,23 @@ $0C is the network's native token and ownership layer.
 | | |
 |---|---|
 | **Ticker** | `$0C` |
-| **Chain** | Solana (pump.fun) |
+| **Chain** | Ethereum (ERC-20) |
 | **Total supply** | **1,000,000,000** (fixed — no inflation) |
-| **Decimals** | 6 |
+| **Decimals** | 18 |
 
-**Reserve model.** Withdrawals pay out in **SOL** from a treasury reserve held in
-SOL, fed by deposits and by $0C **creator-reward fees** on pump.fun. The reserve
-is deliberately **not** backed by $0C itself — backing redemptions with a
-volatile self-issued token invites a reflexive insolvency spiral, so $0C accrues
-value via fee-funded **buyback-and-burn** while redemptions stay covered by real
-SOL.
+**Reserve model.** Withdrawals pay out in **ETH** from a treasury reserve held in
+ETH, fed by deposits and protocol margin. The reserve is deliberately **not**
+backed by $0C itself — backing redemptions with a volatile self-issued token
+invites a reflexive insolvency spiral, so $0C accrues value via fee-funded
+**buyback-and-burn** (Uniswap) while redemptions stay covered by real ETH.
 
 ### Utility
 
-- **Buy credits.** $0C can be used to purchase credits alongside SOL/USDC.
+- **Buy credits.** $0C can be used to purchase credits alongside ETH/USDT.
 - **Stake.** Stake $0C (and, today, credits) to earn a share of protocol fees and
   to boost worker earn priority.
 - **Worker settlement.** Worker earnings accrue in credits and can be settled to
-  $0C / USDC.
+  $0C / USDT.
 - **Governance.** $0C holders steer protocol parameters (fee rates, model policy,
   treasury use) as the network decentralizes.
 
@@ -165,8 +167,8 @@ accrued earnings and quarantining the worker.
   reconnection/resume, dashboards. ✅ (in progress)
 - **Phase 2 — Multimodal.** Image ✅ → voice → video.
 - **Phase 3 — Agents / tool-use.**
-- **Phase 4 — Crypto layer.** On-chain SOL deposits ✅, staking ✅, $0C token,
-  buyback-and-burn, USDC worker payouts.
+- **Phase 4 — Crypto layer.** On-chain ETH/USDT deposits ✅, staking ✅, $0C token,
+  buyback-and-burn, USDT worker payouts.
 - **Phase 5 — Anti-cheat enforcement.**
 - **Phase 6 — Pipeline-parallel serving** of very large models.
 - **Phase 7 — Group messaging & forward secrecy** (Double Ratchet, sender keys).
@@ -196,7 +198,7 @@ Every credit spent on a job splits deterministically at settlement:
 | Stakers (rewards pool) | 10% |
 | Protocol margin → buyback & burn $0C | 20% |
 
-Worker earnings accrue in credits and can be settled to $0C / USDC; the staking
+Worker earnings accrue in credits and can be settled to $0C / USDT; the staking
 slice is distributed by reward-per-share; the protocol margin funds the
 buyback-and-burn that removes $0C from circulation.
 
@@ -254,7 +256,7 @@ curl $ORCH/v1/chat/completions \
 
 ## 18. FAQ
 
-**Is $0C live?** No — credits and on-chain SOL deposits are live; the $0C token is
+**Is $0C live?** No — credits and on-chain ETH/USDT deposits are live; the $0C token is
 a published design, not yet minted or tradeable.
 
 **How is privacy protected?** Prompts and generated media are never stored (only
@@ -327,7 +329,7 @@ workers serves it together and shares the reward.
 ## 24. Status & disclaimer
 
 This document describes the design and parameters of Open Communication and the
-$0C token. Credits and on-chain SOL deposits are live; the $0C token described in
+$0C token. Credits and on-chain ETH/USDT deposits are live; the $0C token described in
 §7 is a design specification and is **not yet minted or tradeable**. Nothing here
 is an offer to sell a security or investment advice. Token parameters and
 allocations are proposals subject to change before any launch.

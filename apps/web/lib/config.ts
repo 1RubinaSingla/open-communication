@@ -14,3 +14,9 @@ export const ORCH_MISCONFIGURED =
   window.location.hostname !== "localhost" &&
   window.location.hostname !== "127.0.0.1" &&
   ORCH_URL.includes("localhost");
+
+/**
+ * Public contact address. Lives here rather than in the route handler because
+ * Next only permits route exports (GET/POST/…) from a route file.
+ */
+export const CONTACT_EMAIL = "contact@opencommunication.app";

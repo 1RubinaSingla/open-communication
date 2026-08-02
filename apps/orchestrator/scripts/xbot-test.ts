@@ -16,7 +16,7 @@ check("link code uppercased", (parseCommand(`${LINK_PREFIX.toLowerCase()}a1b2c3d
 check("generated code parses back", parseCommand(newLinkCode()).kind === "link");
 
 console.log("2) token-gate tiers (1M limited / 10M unlimited)");
-const gate = makeTokenGate({ mint: "", rpcUrl: "", tier1: 1_000_000, tier2: 10_000_000, tier1DailyLimit: 5 });
+const gate = makeTokenGate({ token: "", rpcUrl: "", chain: "mainnet", tier1: 1_000_000, tier2: 10_000_000, tier1DailyLimit: 5 });
 check("0 tokens -> none", gate.tierFor(0).tier === "none");
 check("999,999 -> none (below tier1)", gate.tierFor(999_999).tier === "none");
 check("1,000,000 -> limited", gate.tierFor(1_000_000).tier === "limited");
