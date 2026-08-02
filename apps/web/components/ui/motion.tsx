@@ -88,7 +88,10 @@ export function useInView<T extends HTMLElement>(rootMargin = "0px 0px -12% 0px"
 
     const check = () => {
       const r = el.getBoundingClientRect();
-      if (r.top < window.innerHeight * 0.95 && r.bottom > 0) stop();
+      // Plain viewport intersection. This is the backstop, so it stays more
+      // permissive than the observer's rootMargin on purpose — its job is to
+      // never leave content stuck, not to reproduce the reveal bias.
+      if (r.top < window.innerHeight && r.bottom > 0) stop();
     };
 
     const io = new IntersectionObserver(
@@ -213,7 +216,10 @@ export function Counter({
   className?: string;
 }) {
   const reduced = usePrefersReducedMotion();
-  const { ref, inView } = useInView<HTMLSpanElement>();
+  // No bottom bias: a counter is a readout, not a scroll-reveal, and the hero's
+  // status strip sits in the bottom slice of the fold that the reveal margin
+  // deliberately excludes — which left it pinned at 0 forever.
+  const { ref, inView } = useInView<HTMLSpanElement>("0px");
   const [shown, setShown] = useState(0);
 
   useEffect(() => {
