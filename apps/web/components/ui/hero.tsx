@@ -41,7 +41,7 @@ export function Hero() {
   }, []);
 
   return (
-    <section className="relative -mx-4 flex min-h-[calc(100vh-3.5rem)] items-center overflow-hidden bg-black">
+    <section className="relative -mx-4 flex min-h-[calc(100vh-4rem)] items-center overflow-hidden bg-black">
       {/* Animated ASCII field — bends toward the cursor */}
       <div className="absolute inset-0">
         <AsciiBackground className="h-full w-full" />
